@@ -667,16 +667,34 @@ async function refreshRoom(room, { initial = false } = {}) {
         }
       }
       st.messages.sort((a, b) => a.sent_at.localeCompare(b.sent_at));
-      const last = st.messages[st.messages.length - 1];
-      if (last) {
-        const lastDate = new Date(last.sent_at);
-        lastDate.setSeconds(lastDate.getSeconds() + 1);
-        st.lastSinceIso = lastDate.toISOString();
+      // Advance lastSinceIso to the newest COMMIT date in the fetched batch
+      // (not sent_at). GitHub's `since` filter is against committer.date,
+      // which can be a fraction of a second later than sent_at. Without this,
+      // the same most-recent commit re-appears on every poll, and if the
+      // dedup above ever misses it (e.g. mid-state-rebuild), Sounds.message()
+      // fires even though nothing new was posted. Always advance, even when
+      // added===0, so duplicates eventually fall out of the window. Never
+      // move backwards.
+      let newestStamp = "";
+      for (const m of newMessages) {
+        const stamp = m.committed_at || m.sent_at;
+        if (stamp && stamp > newestStamp) newestStamp = stamp;
       }
-      // Only ping when we actually learned about a new message — incremental
-      // fetches can repeat the same commits (e.g. since vs commit timestamps).
-      if (!initial && room === state.activeRoom && added > 0) Sounds.message();
-      if (room === state.activeRoom) renderTranscript();
+      if (newestStamp) {
+        const d = new Date(newestStamp);
+        d.setSeconds(d.getSeconds() + 2);
+        const next = d.toISOString();
+        if (!st.lastSinceIso || next > st.lastSinceIso) {
+          st.lastSinceIso = next;
+        }
+      }
+
+      // Sort + render + ping only when we actually learned something new.
+      if (added > 0) {
+        st.messages.sort((a, b) => a.sent_at.localeCompare(b.sent_at));
+        if (!initial && room === state.activeRoom) Sounds.message();
+        if (room === state.activeRoom) renderTranscript();
+      }
     }
   } catch (e) {
     console.error(`refreshRoom(${room}) failed:`, e);
@@ -745,7 +763,9 @@ function syncMuteButtonUi() {
   const btn = $("#muteBtn");
   if (!btn) return;
   const muted = Sounds.isMuted();
-  btn.textContent = muted ? "🔇" : "🔊";
+  const glyph = btn.querySelector(".buddy-strip-glyph");
+  if (glyph) glyph.textContent = muted ? "🔇" : "🔊";
+  else btn.textContent = muted ? "🔇" : "🔊";
   btn.setAttribute("aria-label", muted ? "Sound muted. Activate to turn sound on." : "Sound on. Activate to mute.");
 }
 
