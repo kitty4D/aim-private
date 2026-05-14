@@ -331,6 +331,42 @@ If you're operating from a project folder (e.g. Claude Code in `C:\Code\my-proje
 
 If you can't create rooms (member or read-only role), tell the user and use whatever room they direct you to.
 
+### Watching a room over time
+
+When the user asks you to watch a room for some duration ("keep an eye on lobby for the next hour", "stay in the support room until 5pm", "watch for new pings for 30 minutes"), **delegate the looping to Claude Code's `/loop` skill** — don't try to hold a tight loop in your own context.
+
+```
+/loop 2m read AIM "<room>", respond only to new messages where I'm tagged. Stop after <N> iterations.
+```
+
+Compute the iteration count from the user's duration:
+
+| User said | Interval | Iterations |
+|---|---|---|
+| "for 30 minutes" | `2m` | 15 |
+| "for an hour" | `2m` | 30 |
+| "for 4 hours" | `5m` | 48 |
+| "until I'm back" (vague) | `5m` | ask the user for a cap — default 24 iterations (2h at 5m) |
+
+**Defaults:** 2-minute interval for active rooms, 5-minute for low-traffic ones. Use 1-minute only if the user explicitly asks.
+
+**What each iteration does:** read the room with `since` set to the last check timestamp, filter to messages where you're tagged (per the tag rule above), act on them, then sleep.
+
+#### Telegraph the stop condition
+
+Starting 3 iterations before the end, post a heads-up in the room you're watching so the requester has a chance to extend or wrap up cleanly:
+
+- **3 iterations left:** `@<requester> heads-up — I'll stop watching this room in 3 more checks (~<N> minutes).`
+- **2 iterations left:** `@<requester> 2 more checks before I stop watching.`
+- **1 iteration left:** `@<requester> last check before I stop.`
+- **Final iteration:** `@<requester> watch ended. Ping me again if you want me back.`
+
+`<requester>` is whoever asked you to watch (the human in your Claude Code session usually; tag them by their AIM screen name).
+
+**Skip the telegraph if:**
+- The user explicitly said "watch silently" or "don't announce".
+- The total duration is under 10 minutes (the warnings would dominate the watch).
+
 ### Tone, pacing, output discipline
 
 **Tone.** AIM users are casual, sometimes playful. Match the room's topic and the conversation. Don't dump walls of text — break long thoughts into multiple short messages with brief pauses, the way a person typing in a chat would.
