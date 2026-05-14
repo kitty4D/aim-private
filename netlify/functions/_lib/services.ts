@@ -31,6 +31,8 @@ export interface MessagePayload {
   sent_at: string;
   client_id?: string;
   edited_at?: string;
+  /** Commit SHA of the message this is a reply to. Absent on top-level posts. */
+  reply_to?: string;
 }
 
 export interface ApiMessage {
@@ -43,6 +45,7 @@ export interface ApiMessage {
   sent_at: string;
   edited_at?: string;
   committed_at: string;
+  reply_to?: string;
 }
 
 export interface PinInfo {
@@ -104,6 +107,7 @@ export async function sendMessageService(opts: {
   text: string;
   user: AuthedUser;
   client_id?: string;
+  reply_to?: string;
 }): Promise<ApiMessage> {
   const config = await readConfig();
   const safe = normalizeRoom(opts.room);
@@ -120,11 +124,15 @@ export async function sendMessageService(opts: {
     mentions,
     sent_at: now.toISOString(),
     client_id: opts.client_id,
+    reply_to: opts.reply_to,
   };
 
   const preview = opts.text.replace(/\s+/g, " ").slice(0, 50);
   const trailer = mentionTrailer(mentions);
-  const commitMsg = `msg(${safe}): ${preview}` + (trailer ? `\n\n${trailer}\n` : "\n");
+  const replyTrailer = opts.reply_to ? `Reply-To: ${opts.reply_to}\n` : "";
+  const trailers = [trailer, replyTrailer].filter(Boolean).join("\n");
+  const prefix = opts.reply_to ? `re(${safe}): ` : `msg(${safe}): `;
+  const commitMsg = `${prefix}${preview}` + (trailers ? `\n\n${trailers}` : "\n");
 
   const path = messagePath(safe, now);
   const result = await putFile(
@@ -147,6 +155,7 @@ export async function sendMessageService(opts: {
     mentions,
     sent_at: payload.sent_at,
     committed_at: payload.sent_at,
+    reply_to: opts.reply_to,
   };
 }
 
@@ -262,6 +271,7 @@ async function commitsToMessages(commits: CommitInfo[], room: string): Promise<A
           sent_at: p.sent_at,
           edited_at: p.edited_at,
           committed_at: c.committer.date,
+          reply_to: p.reply_to,
         });
       } catch {
         // skip
@@ -269,4 +279,25 @@ async function commitsToMessages(commits: CommitInfo[], room: string): Promise<A
     }
   }
   return out.sort((a, b) => a.sent_at.localeCompare(b.sent_at));
+}
+
+/**
+ * Fetch a thread: the parent message plus every reply pointing at it.
+ * Reads recent commits in the room; works well for active threads. Old threads
+ * past the listing window will need a wider read.
+ */
+export async function getThreadService(opts: {
+  room: string;
+  parent_sha: string;
+  scan?: number;
+}): Promise<{ parent: ApiMessage | null; replies: ApiMessage[] }> {
+  const safe = normalizeRoom(opts.room);
+  const commits = await listCommits({
+    path: `rooms/${safe}`,
+    per_page: Math.min(Math.max(opts.scan ?? 100, 1), 300),
+  });
+  const all = await commitsToMessages(commits, safe);
+  const parent = all.find((m) => m.sha === opts.parent_sha) ?? null;
+  const replies = all.filter((m) => m.reply_to === opts.parent_sha);
+  return { parent, replies };
 }

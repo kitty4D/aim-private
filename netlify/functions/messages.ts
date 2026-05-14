@@ -1,13 +1,8 @@
 import { requireUser, requireWriter, json, errorResponse, AuthError } from "./_lib/auth.js";
-import { readConfig } from "./_lib/config.js";
-import { messagePath, normalizeRoom, userEmail, isMessagePath } from "./_lib/paths.js";
-import { parseMentions, mentionTrailer } from "./_lib/mention.js";
-import { readRoomService } from "./_lib/services.js";
-import {
-  putFile,
-  deleteFile,
-  getFile,
-} from "./_lib/github.js";
+import { normalizeRoom, userEmail, isMessagePath } from "./_lib/paths.js";
+import { parseMentions } from "./_lib/mention.js";
+import { readRoomService, sendMessageService } from "./_lib/services.js";
+import { putFile, deleteFile, getFile } from "./_lib/github.js";
 
 interface MessagePayload {
   text: string;
@@ -63,54 +58,30 @@ async function handleGet(req: Request, url: URL): Promise<Response> {
 
 async function handlePost(req: Request): Promise<Response> {
   const user = await requireWriter(req);
-  const body = (await req.json().catch(() => ({}))) as { room?: string; text?: string; client_id?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    room?: string;
+    text?: string;
+    client_id?: string;
+    reply_to?: string;
+  };
   if (!body.room) return json({ error: "Missing 'room'." }, 400);
   if (!body.text || typeof body.text !== "string") return json({ error: "Missing 'text'." }, 400);
   if (body.text.length > MAX_TEXT_LEN) {
     return json({ error: `Message too long (max ${MAX_TEXT_LEN} chars).` }, 400);
   }
-
-  const config = await readConfig();
-  const safe = normalizeRoom(body.room);
-  if (!config.rooms.includes(safe)) {
-    return json({ error: `Unknown room: '${safe}'. Available: ${config.rooms.join(", ")}` }, 404);
+  if (body.reply_to && !/^[0-9a-f]{40}$/i.test(body.reply_to)) {
+    return json({ error: "Invalid 'reply_to' — must be a 40-char hex commit SHA." }, 400);
   }
 
-  const now = new Date();
-  const mentions = parseMentions(body.text);
-  const payload: MessagePayload = {
+  const message = await sendMessageService({
+    room: body.room,
     text: body.text,
-    author: user.name,
-    mentions,
-    sent_at: now.toISOString(),
+    user,
     client_id: body.client_id,
-  };
+    reply_to: body.reply_to,
+  });
 
-  const preview = body.text.replace(/\s+/g, " ").slice(0, 50);
-  const trailer = mentionTrailer(mentions);
-  const commitMsg =
-    `msg(${safe}): ${preview}` + (trailer ? `\n\n${trailer}\n` : "\n");
-
-  const path = messagePath(safe, now);
-  const result = await putFile(
-    path,
-    JSON.stringify(payload, null, 2) + "\n",
-    commitMsg,
-    { name: user.name, email: userEmail(user.name) },
-  );
-
-  return json(
-    {
-      sha: result.commitSha,
-      path,
-      room: safe,
-      author: user.name,
-      text: body.text,
-      mentions,
-      sent_at: payload.sent_at,
-    },
-    201,
-  );
+  return json(message, 201);
 }
 
 async function handlePatch(req: Request, url: URL): Promise<Response> {

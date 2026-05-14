@@ -110,6 +110,7 @@ async function startRealtime() {
 function renderBuddyList() {
   $("#serverName").textContent = state.serverName;
   $("#meName").textContent = state.me.name;
+  $("#meName").setAttribute("title", state.me.name);
   $("#meRole").textContent = state.me.role;
   if (state.motd) {
     $("#motd").textContent = state.motd;
@@ -120,8 +121,15 @@ function renderBuddyList() {
   roomList.innerHTML = "";
   for (const room of state.rooms) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="dot"></span> #${escapeHtml(room)}`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const label = document.createElement("span");
+    label.className = "buddy-list-text";
+    label.textContent = "#" + room;
+    li.appendChild(dot);
+    li.appendChild(label);
     li.dataset.room = room;
+    li.title = "#" + room;
     li.addEventListener("dblclick", () => openRoom(room));
     li.addEventListener("click", () => openRoom(room));
     roomList.appendChild(li);
@@ -179,7 +187,14 @@ function renderOnlineList() {
   for (const u of others) {
     const li = document.createElement("li");
     const color = STATUS_COLORS[u.status] || "#888";
-    li.innerHTML = `<span class="dot" style="background:${color}"></span> ${escapeHtml(u.name)}`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = color;
+    const label = document.createElement("span");
+    label.className = "buddy-list-text";
+    label.textContent = u.name;
+    li.appendChild(dot);
+    li.appendChild(label);
     li.title = `${u.name} (${u.status})`;
     list.appendChild(li);
   }
@@ -313,15 +328,48 @@ function buildMessageElement(m, st) {
   const div = document.createElement("div");
   div.className = "msg";
   div.dataset.msgKey = messageKey(m);
+  div.dataset.sha = m.sha;
   if (m.author === state.me.name) div.classList.add("own");
   const pinned = st.pinIndex.has(m.sha) ? "pinned" : "";
+  const replyCount = st.replyCounts?.get(m.sha) ?? 0;
   div.innerHTML = `
       <span class="author" style="color:${userColor(m.author)}">${escapeHtml(m.author)}</span>
       <span class="body">${highlightMentions(m.text)}</span>
       <span class="ts">${hhmm(m.sent_at)}</span>
       ${m.edited_at ? '<span class="edited">(edited)</span>' : ""}
-      <button type="button" class="star ${pinned}" data-sha="${String(m.sha)}" title="Pin or unpin this message" aria-label="Pin or unpin message" aria-pressed="${st.pinIndex.has(m.sha) ? "true" : "false"}">★</button>`;
+      <button type="button" class="reply-btn" data-sha="${String(m.sha)}" title="Reply in thread" aria-label="Reply in thread">↩</button>
+      <button type="button" class="star ${pinned}" data-sha="${String(m.sha)}" title="Pin or unpin this message" aria-label="Pin or unpin message" aria-pressed="${st.pinIndex.has(m.sha) ? "true" : "false"}">★</button>
+      <button type="button" class="thread-badge${replyCount === 0 ? " hidden" : ""}" data-sha="${String(m.sha)}" title="Open thread" aria-label="Open thread">💬 <span class="thread-count">${replyCount}</span></button>`;
   return div;
+}
+
+function computeReplyCounts(messages) {
+  const m = new Map();
+  for (const msg of messages) {
+    if (msg.reply_to) {
+      m.set(msg.reply_to, (m.get(msg.reply_to) ?? 0) + 1);
+    }
+  }
+  return m;
+}
+
+function syncThreadBadgesInTranscript() {
+  const t = $("#transcript");
+  if (!t) return;
+  const room = state.activeRoom;
+  const st = state.roomState[room];
+  if (!st) return;
+  const counts = st.replyCounts ?? new Map();
+  t.querySelectorAll(".msg").forEach((row) => {
+    const sha = row.dataset.sha;
+    if (!sha) return;
+    const badge = row.querySelector(".thread-badge");
+    if (!badge) return;
+    const n = counts.get(sha) ?? 0;
+    badge.classList.toggle("hidden", n === 0);
+    const countEl = badge.querySelector(".thread-count");
+    if (countEl) countEl.textContent = String(n);
+  });
 }
 
 function syncPinStarsInTranscript() {
@@ -347,14 +395,20 @@ function renderTranscript(opts = {}) {
   const t = $("#transcript");
   if (!t) return;
 
+  // Recompute reply-counts from all messages (incl. replies), then render
+  // ONLY top-level messages (those without reply_to) in the main transcript.
+  // Replies appear inside the thread modal.
+  st.replyCounts = computeReplyCounts(st.messages);
+  const topLevel = st.messages.filter((m) => !m.reply_to);
+
   if (full) {
     t.innerHTML = "";
     const frag = document.createDocumentFragment();
-    for (const m of st.messages) frag.appendChild(buildMessageElement(m, st));
+    for (const m of topLevel) frag.appendChild(buildMessageElement(m, st));
     t.appendChild(frag);
   } else {
     const keysInDom = new Set([...t.querySelectorAll(".msg")].map((r) => r.dataset.msgKey));
-    for (const m of st.messages) {
+    for (const m of topLevel) {
       const k = messageKey(m);
       if (!keysInDom.has(k)) {
         t.appendChild(buildMessageElement(m, st));
@@ -377,16 +431,31 @@ function renderTranscript(opts = {}) {
       }
     }
     syncPinStarsInTranscript();
+    syncThreadBadgesInTranscript();
   }
   t.scrollTop = t.scrollHeight;
 }
 
 function onTranscriptStarClick(e) {
-  const star = e.target.closest(".star");
   const t = e.currentTarget;
-  if (!star || !t.contains(star)) return;
-  e.preventDefault();
-  togglePinForSha(star.dataset.sha);
+  const star = e.target.closest(".star");
+  if (star && t.contains(star)) {
+    e.preventDefault();
+    togglePinForSha(star.dataset.sha);
+    return;
+  }
+  const reply = e.target.closest(".reply-btn");
+  if (reply && t.contains(reply)) {
+    e.preventDefault();
+    openThreadDialog(reply.dataset.sha);
+    return;
+  }
+  const badge = e.target.closest(".thread-badge");
+  if (badge && t.contains(badge)) {
+    e.preventDefault();
+    openThreadDialog(badge.dataset.sha);
+    return;
+  }
 }
 
 async function togglePinForSha(sha) {
@@ -734,6 +803,110 @@ function openEditTopicDialog() {
       submit.disabled = false;
     }
   });
+}
+
+// ---------- Threads ----------
+
+function openThreadDialog(parentSha) {
+  const room = state.activeRoom;
+  if (!room || !parentSha) return;
+  const st = state.roomState[room];
+  const parent = st?.messages.find((m) => m.sha === parentSha);
+  const titlePreview = parent ? parent.text.replace(/\s+/g, " ").slice(0, 60) : parentSha.slice(0, 12);
+
+  const { overlay, dismiss } = showModal(`
+    <div class="title-bar">
+      <div class="title-bar-text">Thread — ${escapeHtml(titlePreview)}</div>
+      <div class="title-bar-controls">
+        <button type="button" class="modal-close" aria-label="Close"></button>
+      </div>
+    </div>
+    <div class="window-body thread-body">
+      <div class="thread-parent" id="threadParent">
+        ${parent ? renderThreadMessageHtml(parent, true) : "<p class='help'>Parent message not loaded — fetching…</p>"}
+      </div>
+      <div class="thread-replies" id="threadReplies">
+        <p class="help">Loading replies…</p>
+      </div>
+      <div class="compose">
+        <textarea id="threadComposer" placeholder="Reply in thread…" rows="2"></textarea>
+        <button type="button" id="threadSendBtn">Send</button>
+      </div>
+      <div id="threadError" class="help hidden" style="color:#c00; margin-top:4px"></div>
+    </div>`);
+
+  overlay.querySelectorAll(".modal-close").forEach((b) => b.addEventListener("click", dismiss));
+  const repliesEl = overlay.querySelector("#threadReplies");
+  const parentEl = overlay.querySelector("#threadParent");
+  const composer = overlay.querySelector("#threadComposer");
+  const sendBtn = overlay.querySelector("#threadSendBtn");
+  const errBox = overlay.querySelector("#threadError");
+
+  if (state.me.role === "read-only") {
+    composer.disabled = true;
+    sendBtn.disabled = true;
+    composer.placeholder = "Read-only token — can't reply.";
+  }
+
+  let lastFetched = null;
+  const refresh = async () => {
+    try {
+      const res = await Client.getThread(room, parentSha);
+      lastFetched = res;
+      if (res.parent && parentEl) parentEl.innerHTML = renderThreadMessageHtml(res.parent, true);
+      if (!res.replies.length) {
+        repliesEl.innerHTML = `<p class="help" style="font-style:italic">No replies yet. Be the first.</p>`;
+      } else {
+        repliesEl.innerHTML = res.replies.map((m) => renderThreadMessageHtml(m, false)).join("");
+      }
+    } catch (e) {
+      repliesEl.innerHTML = `<p class="help" style="color:#c00">Couldn't load thread: ${escapeHtml(e.message)}</p>`;
+    }
+  };
+
+  sendBtn.addEventListener("click", async () => {
+    const text = composer.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    composer.disabled = true;
+    try {
+      Sounds.send();
+      await Client.send(room, text, crypto.randomUUID(), parentSha);
+      composer.value = "";
+      await refresh();
+      // also refresh the main room so the badge count updates
+      refreshRoom(room).catch(() => {});
+    } catch (e) {
+      Sounds.error();
+      errBox.textContent = e.message;
+      errBox.classList.remove("hidden");
+    } finally {
+      sendBtn.disabled = false;
+      composer.disabled = false;
+      composer.focus();
+    }
+  });
+
+  composer.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  refresh();
+}
+
+function renderThreadMessageHtml(m, isParent) {
+  const color = userColor(m.author);
+  const cls = isParent ? "thread-msg thread-msg-parent" : "thread-msg";
+  return `
+    <div class="${cls}">
+      <span class="author" style="color:${color}">${escapeHtml(m.author)}</span>
+      <span class="body">${highlightMentions(m.text)}</span>
+      <span class="ts">${hhmm(m.sent_at)}</span>
+      ${m.edited_at ? '<span class="edited">(edited)</span>' : ""}
+    </div>`;
 }
 
 // ---------- Admin: user management ----------

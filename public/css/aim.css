@@ -199,6 +199,12 @@ body.desktop {
   box-sizing: border-box;
 }
 
+@media (min-width: 641px) {
+  .app {
+    grid-template-columns: minmax(300px, min(380px, 34vw)) 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .app {
     grid-template-columns: 1fr;
@@ -246,6 +252,8 @@ body.desktop {
   .buddy-section-toolbar .section-action {
     min-width: 44px;
     min-height: 44px;
+    padding: 8px;
+    margin: 0;
   }
 }
 
@@ -253,6 +261,7 @@ body.desktop {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 .buddy-list .window-body {
   flex: 1;
@@ -274,6 +283,9 @@ body.desktop {
   padding: 4px 6px 5px;
   gap: 8px;
   min-height: 30px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   background: linear-gradient(180deg, #f4f7fa 0%, #e8e4dc 52%, #ded9cf 100%);
   border-top: 1px solid #fff;
   border-bottom: 1px solid #5a5f66;
@@ -314,22 +326,24 @@ body.desktop {
 .buddy-identity-id {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 2px 6px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  flex: 1;
   min-width: 0;
   padding: 1px 0;
 }
 
 .buddy-identity-name {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  max-width: 100%;
   min-width: 0;
+  flex: 1;
+  max-width: 100%;
 }
 
-/* Faux LCD readout — plastic bezel + inset glass (retro + “tomorrow” seasoning) */
 .buddy-lcd {
-  display: inline-block;
+  display: block;
+  max-width: 100%;
   vertical-align: middle;
   padding: 2px 4px 3px;
   border-radius: 3px;
@@ -343,8 +357,10 @@ body.desktop {
 .buddy-lcd-glass {
   display: block;
   position: relative;
-  min-width: 5.5rem;
-  max-width: min(14rem, 42vw);
+  min-width: 4.5rem;
+  max-width: min(14rem, 100%);
+  width: 100%;
+  box-sizing: border-box;
   padding: 4px 9px 5px;
   border-radius: 2px;
   background: linear-gradient(180deg, #07140e 0%, #0f2419 42%, #081208 100%);
@@ -395,6 +411,8 @@ body.desktop {
 }
 
 .buddy-identity-role {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-family: Consolas, "Courier New", monospace;
   font-size: 10px;
   font-weight: 600;
@@ -495,6 +513,9 @@ button.buddy-section-header::-moz-focus-inner {
   background: var(--aim-yellow);
   border: 1px solid var(--aim-yellow-dark);
   min-height: 0;
+  padding: 3px;
+  gap: 6px;
+  box-sizing: border-box;
 }
 .buddy-section-toolbar .buddy-section-header {
   flex: 1;
@@ -505,13 +526,17 @@ button.buddy-section-header::-moz-focus-inner {
 }
 .buddy-section-toolbar .section-action {
   flex: none;
-  margin: 1px 4px 1px 0;
-  min-width: 18px;
-  min-height: 16px;
-  padding: 0 4px;
+  margin: 0;
+  box-sizing: border-box;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 4px;
   font-size: 12px;
-  line-height: 14px;
+  line-height: 1;
   font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .buddy-list ul {
@@ -526,6 +551,14 @@ button.buddy-section-header::-moz-focus-inner {
   display: flex;
   gap: 4px;
   align-items: center;
+  min-width: 0;
+}
+.buddy-list-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .buddy-list li:hover {
   background: #d8e6f6;

@@ -55,11 +55,18 @@ export const Client = {
     if (since) params.set("since", since);
     return this.req("/api/messages?" + params.toString());
   },
-  send(room, text, client_id) {
+  send(room, text, client_id, reply_to) {
+    const body = { room, text, client_id };
+    if (reply_to) body.reply_to = reply_to;
     return this.req("/api/messages", {
       method: "POST",
-      body: JSON.stringify({ room, text, client_id }),
+      body: JSON.stringify(body),
     });
+  },
+  getThread(room, parent_sha, scan) {
+    const params = new URLSearchParams({ room, parent: parent_sha });
+    if (scan) params.set("scan", String(scan));
+    return this.req("/api/threads?" + params.toString());
   },
   editMessage(path, text) {
     const params = new URLSearchParams({ path });

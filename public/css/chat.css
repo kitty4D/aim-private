@@ -212,3 +212,80 @@
   outline: 2px solid var(--aim-blue-dark);
   outline-offset: 1px;
 }
+
+/* ---------- Thread UI ---------- */
+
+.msg .reply-btn,
+.msg .thread-badge {
+  font-size: 10px;
+  margin-left: 4px;
+  border: 1px outset #c0c0c0;
+  background: #ece9d8;
+  padding: 1px 5px;
+  cursor: pointer;
+  font-family: Tahoma, Arial, sans-serif;
+  vertical-align: middle;
+}
+.msg .reply-btn {
+  opacity: 0.4;
+}
+.msg:hover .reply-btn { opacity: 0.9; }
+.msg .reply-btn:hover { background: #fff; }
+
+.msg .thread-badge {
+  opacity: 0.85;
+  background: #fff8dc;
+  border-color: #d99e00;
+  color: #5a3d00;
+}
+.msg .thread-badge:hover { background: #fff0a8; opacity: 1; }
+.msg .thread-badge.hidden { display: none; }
+
+.thread-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 70vh;
+}
+.thread-body .thread-parent {
+  background: #fff8dc;
+  border: 1px solid #d99e00;
+  padding: 6px 8px;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13px;
+}
+.thread-body .thread-replies {
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #808080;
+  border-top: none;
+  padding: 4px 8px;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13px;
+  min-height: 120px;
+  max-height: 360px;
+}
+.thread-body .thread-msg {
+  padding: 2px 0;
+  line-height: 1.35;
+}
+.thread-body .thread-msg .author {
+  font-weight: bold;
+}
+.thread-body .thread-msg .author::after { content: ":"; }
+.thread-body .thread-msg .ts {
+  color: #888;
+  font-size: 10px;
+  margin-left: 6px;
+  font-family: Tahoma, Arial, sans-serif;
+}
+.thread-body .thread-msg .edited {
+  color: #888;
+  font-size: 10px;
+  margin-left: 4px;
+  font-family: Tahoma, Arial, sans-serif;
+}
+.thread-body .compose {
+  margin-top: 0;
+}

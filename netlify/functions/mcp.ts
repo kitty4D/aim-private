@@ -10,6 +10,7 @@ import {
   addRoomService,
   setRoomTopicService,
   getRoomTopicService,
+  getThreadService,
 } from "./_lib/services.js";
 import { readConfig, canManageRoom } from "./_lib/config.js";
 import { normalizeRoom } from "./_lib/paths.js";
@@ -59,12 +60,18 @@ const TOOLS = [
   {
     name: "aim_send_message",
     description:
-      "Post a message to a chat room. Mention other users with @username. The message will be committed to git, attributed to your AIM token's name.",
+      "Post a message to a chat room. Mention other users with @username — and when responding to a specific person's message, ALWAYS prefix the reply with @<their-name>. Pass `reply_to` (a commit SHA) to attach this message as a thread reply.",
     inputSchema: {
       type: "object",
       properties: {
         room: { type: "string", description: "Room name to post to." },
         text: { type: "string", description: "Message body. Max 8000 chars. Plain text or markdown." },
+        reply_to: {
+          type: "string",
+          description:
+            "Optional. Commit SHA of an existing message to attach this as a reply to. Use it to keep follow-ups grouped in a thread instead of cluttering the main room.",
+          pattern: "^[0-9a-f]{40}$",
+        },
       },
       required: ["room", "text"],
       additionalProperties: false,
@@ -167,6 +174,31 @@ const TOOLS = [
         content: { type: "string", description: "Markdown content. Max 16,000 chars." },
       },
       required: ["room", "content"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "aim_get_thread",
+    description:
+      "Fetch a single thread — the parent message plus all replies attached to it via `reply_to`. Use this to focus on one conversation thread without scanning the whole room.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        room: { type: "string" },
+        parent_sha: {
+          type: "string",
+          description: "Commit SHA of the thread's parent (root) message.",
+          pattern: "^[0-9a-f]{40}$",
+        },
+        scan: {
+          type: "integer",
+          minimum: 1,
+          maximum: 300,
+          default: 100,
+          description: "How many recent commits to scan for replies. Bump if the thread is old.",
+        },
+      },
+      required: ["room", "parent_sha"],
       additionalProperties: false,
     },
   },
@@ -281,7 +313,11 @@ async function callTool(
       if (user.role === "read-only") throw new Error("This token is read-only.");
       const room = str(args.room, "room");
       const text = str(args.text, "text");
-      const m = await sendMessageService({ room, text, user: user as any });
+      const reply_to = typeof args.reply_to === "string" ? args.reply_to : undefined;
+      if (reply_to && !/^[0-9a-f]{40}$/i.test(reply_to)) {
+        throw new Error("Invalid 'reply_to' — must be a 40-char hex commit SHA.");
+      }
+      const m = await sendMessageService({ room, text, user: user as any, reply_to });
       return JSON.stringify(m, null, 2);
     }
     case "aim_pin_message": {
@@ -360,6 +396,20 @@ async function callTool(
       }
       const result = await setRoomTopicService(room, content, user as any);
       return JSON.stringify({ room, sha: result.commitSha, length: content.length }, null, 2);
+    }
+    case "aim_get_thread": {
+      const room = normalizeRoom(str(args.room, "room"));
+      const parent_sha = str(args.parent_sha, "parent_sha");
+      if (!/^[0-9a-f]{40}$/i.test(parent_sha)) {
+        throw new Error("Invalid 'parent_sha' — must be a 40-char hex commit SHA.");
+      }
+      const scan = typeof args.scan === "number" ? args.scan : undefined;
+      const result = await getThreadService({ room, parent_sha, scan });
+      return JSON.stringify(
+        { room, parent: result.parent, replies: result.replies, reply_count: result.replies.length },
+        null,
+        2,
+      );
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

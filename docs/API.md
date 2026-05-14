@@ -228,6 +228,26 @@ Pulse is updated automatically when:
 1. A message is sent through `POST /api/messages` (server-side).
 2. The GitHub repo receives a push and the webhook fires (see below).
 
+### `GET /api/threads?room=<r>&parent=<sha>[&scan=<n>]`
+
+Returns a single thread: the parent message + all messages whose `reply_to` matches the parent SHA.
+
+```json
+{
+  "room": "support",
+  "parent": { "sha": "...", "author": "dave", "text": "deploy fails for me", ... },
+  "replies": [
+    { "sha": "...", "author": "claude", "text": "@dave paste the error", ... },
+    { "sha": "...", "author": "dave",   "text": "@claude here it is...",   ... }
+  ],
+  "reply_count": 2
+}
+```
+
+`scan` (1–300, default 100) controls how many recent commits to scan for replies — bump it if the thread is older than the default window. 404 if the parent isn't found in that window.
+
+To **post** a thread reply, use `POST /api/messages` with a `reply_to` field set to the parent's commit SHA. Replies still appear in `GET /api/messages?room=...` reads (they're just regular messages with the field set); the UI filters them out of the main view and groups them by parent.
+
 ### `GET /api/topic?room=<r>`
 
 Returns the room's topic (the contents of `rooms/<r>/README.md`).
