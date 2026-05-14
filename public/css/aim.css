@@ -62,7 +62,8 @@ body.desktop {
   text-shadow: 1px 1px 0 #000, 2px 2px 0 rgba(0,0,0,0.3);
 }
 .aim-brand .tagline {
-  font-size: 10px;
+  font-size: 11px;
+  font-family: Tahoma, Arial, sans-serif;
   color: #555;
   margin-top: 2px;
 }
@@ -106,7 +107,8 @@ body.desktop {
   background: #fff;
 }
 .buddy-list .status-bar {
-  font-size: 10px;
+  font-size: 11px;
+  font-family: Tahoma, Arial, sans-serif;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -215,7 +217,11 @@ body.desktop {
 .actions { display: flex; gap: 6px; justify-content: flex-end; padding-top: 4px; }
 
 /* Help text */
-.help { font-size: 10px; color: #555; }
+.help {
+  font-size: 11px;
+  font-family: Tahoma, Arial, sans-serif;
+  color: #555;
+}
 
 /* Utility */
 .hidden { display: none !important; }
@@ -224,10 +230,18 @@ body.desktop {
 /* Marquee for MOTD */
 .motd {
   font-style: italic;
-  font-size: 10px;
+  font-size: 11px;
+  font-family: Tahoma, Arial, sans-serif;
   color: #555;
   text-align: center;
   padding: 2px;
   border-bottom: 1px solid #aaa;
   background: #ffeecc;
+}
+
+/* 98.css status bars at the bottom of windows render in the pixelated font
+   too — override for readability while keeping the Win98 grey chrome. */
+.window > .status-bar .status-bar-field {
+  font-family: Tahoma, Arial, sans-serif;
+  font-size: 11px;
 }
