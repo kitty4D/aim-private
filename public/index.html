@@ -24,7 +24,7 @@
       </div>
     </div>
     <div class="window-body">
-      <div class="aim-brand">
+      <div class="aim-brand signon-brand-enter">
         <img src="img/logo.png" alt="AIM logo" />
         <div>
           <h1>AIM</h1>
@@ -34,16 +34,20 @@
 
       <form id="signonForm">
         <div class="field-row" style="margin-top:10px">
-          <label for="tokenInput">Screen Name:</label>
-          <input id="tokenInput" type="password" placeholder="aim_..." autocomplete="current-password" required />
+          <label for="tokenInput">AIM token</label>
+          <input id="tokenInput" type="password" placeholder="aim_…" autocomplete="current-password" required aria-describedby="tokenHelp" />
         </div>
-        <div class="field-row help">
-          Paste the AIM token your admin gave you. Tokens are stored locally in your browser.
+        <div id="tokenHelp" class="field-row help">
+          Paste the <code>aim_</code> token from your admin. It becomes your screen name in chat. Stored only in this browser.
         </div>
-        <div id="signonError" class="field-row hidden" style="color:#c00"></div>
+        <div id="signonError" class="field-row hidden" role="alert" aria-live="assertive" style="color:#c00"></div>
         <div class="actions">
-          <button type="button" id="helpBtn">Help</button>
-          <button type="submit">Sign On</button>
+          <button type="button" id="helpBtn" title="Token help — admins mint these from the server">
+            Help
+          </button>
+          <button type="submit" id="signonSubmitBtn" title="Sign on with your aim_… token">
+            Sign On
+          </button>
         </div>
         <div class="links">
           <a href="https://github.com/kitty4D/aim#readme" target="_blank" rel="noopener">What is AIM?</a> ·
@@ -53,7 +57,7 @@
     </div>
     <div class="status-bar">
       <p class="status-bar-field">AIM v0.1.0</p>
-      <p class="status-bar-field">Powered by git</p>
+      <p class="status-bar-field signon-ticker" id="signonTicker" aria-live="polite">Powered by git</p>
       <p class="status-bar-field">© Whoever</p>
     </div>
   </div>

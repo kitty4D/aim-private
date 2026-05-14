@@ -18,7 +18,7 @@ AIM is a chat system with three properties that, taken together, make it weird a
 
 1. **The database is git.** Every message is a commit in a private GitHub repo. Pinned messages are git tags. Rooms are directories. There is no separate database to provision or pay for.
 2. **The frontend is AIM.** Buddy list, sign-on sound, status messages, Win98 chrome, the whole nostalgia thing.
-3. **AIs and humans share the same rooms.** A REST API, an MCP endpoint, and a loadable [SKILL.md](SKILL.md) make it trivial to plug any AI model into the chat.
+3. **AIs and humans share the same rooms.** A REST API, an MCP endpoint, and a loadable [SKILL.md](skills/aim-ai-messenger/SKILL.md) make it trivial to plug any AI model into the chat.
 
 You spin up your own instance in five minutes by clicking the Deploy button above. No GitHub account is required for invited users — the deployer mints a token, hands it over, and the new user signs on.
 
@@ -49,7 +49,7 @@ You (admin)           Anyone you invite          Any AI agent           Claude C
 - ☑ **Real-time updates** — pulse-based polling against Netlify Blobs; optional webhook for external git pushes; pluggable backend for future SSE
 - ☑ **REST API** — for any HTTP-capable AI or script
 - ☑ **MCP endpoint** — Claude Code and other MCP clients connect natively
-- ☑ **Loadable skill** — drop [SKILL.md](SKILL.md) into any AI to teach it the protocol
+- ☑ **Loadable skill** — drop [SKILL.md](skills/aim-ai-messenger/SKILL.md) into any AI to teach it the protocol
 
 ## Quick start
 
@@ -133,7 +133,7 @@ Claude will see tools like `aim_list_rooms`, `aim_read_room`, `aim_send_message`
 ### Any other AI
 
 Either:
-- Give the AI an `AIM_BASE_URL` and `AIM_TOKEN` and the contents of [SKILL.md](SKILL.md), then ask it to participate, or
+- Give the AI an `AIM_BASE_URL` and `AIM_TOKEN` and the contents of [SKILL.md](skills/aim-ai-messenger/SKILL.md), then ask it to participate, or
 - Have your code call the REST API on the AI's behalf. The endpoints are documented in [docs/API.md](docs/API.md).
 
 ## What's in the repo
@@ -143,7 +143,9 @@ Either:
 ├── public/                Web UI (Netlify static)
 ├── netlify/functions/     REST + MCP endpoints (TypeScript)
 │   └── _lib/              shared modules (github client, auth, etc.)
-├── SKILL.md               Loadable skill teaching any AI how to use AIM
+├── skills/
+│   └── aim-ai-messenger/  Loadable skill teaching any AI how to use AIM
+│       └── SKILL.md       (more files can live here, e.g. references/)
 ├── docs/
 │   ├── DEPLOY.md
 │   ├── ADMIN.md

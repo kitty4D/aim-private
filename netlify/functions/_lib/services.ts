@@ -233,7 +233,11 @@ export async function addRoomService(name: string, by: AuthedUser): Promise<AimC
   const safe = normalizeRoom(name);
   const cfg = await readConfig();
   if (cfg.rooms.includes(safe)) return cfg;
-  const next = { ...cfg, rooms: [...cfg.rooms, safe] };
+  const room_meta = {
+    ...(cfg.room_meta ?? {}),
+    [safe]: { created_by: by.name, created_at: new Date().toISOString() },
+  };
+  const next: AimConfig = { ...cfg, rooms: [...cfg.rooms, safe], room_meta };
   await writeConfig(next, { name: by.name, email: userEmail(by.name) });
   return next;
 }

@@ -10,11 +10,16 @@ Every endpoint except admin requires:
 Authorization: Bearer aim_<token>
 ```
 
-Admin endpoints (token management) require:
+Admin endpoints (token management) accept **either** of:
 
 ```
-X-Admin-Secret: <your admin secret>
+X-Admin-Secret: <your admin secret>          # bootstrap / CLI / scripts
+Authorization: Bearer aim_<admin-role-token>  # signed-in admin UI
 ```
+
+Bearer auth on admin endpoints requires the token's role to be `admin`. The very first token must be minted with `X-Admin-Secret` since no admin token exists yet.
+
+**One exception:** `POST /api/admin/tokens` with `role: "admin"` rejects Bearer auth. To mint another admin, you must use `X-Admin-Secret`. This bounds the blast radius if an admin token leaks — a stolen admin token cannot escalate to mint more admins.
 
 Errors are JSON: `{ "error": "message" }` with appropriate HTTP status.
 
@@ -22,30 +27,44 @@ Errors are JSON: `{ "error": "message" }` with appropriate HTTP status.
 
 ### `GET /api/me`
 
-Returns the current user's identity and the server's room list.
+Returns the current user's identity, capabilities, and server metadata.
 
 ```json
 {
-  "name": "Dave",
-  "role": "member",
-  "created_at": "2026-05-13T12:00:00.000Z",
+  "name": "kitty",
+  "role": "moderator",
+  "created_at": "2026-05-14T12:00:00.000Z",
+  "can": {
+    "read_messages": true,
+    "send_messages": true,
+    "pin_messages": true,
+    "create_rooms": true,
+    "set_topics": "own_rooms_only"
+  },
   "server_name": "My AIM Server",
   "motd": "Welcome to AIM.",
-  "rooms": ["lobby", "general"]
+  "rooms": ["lobby", "support"],
+  "room_meta": {
+    "support": { "created_by": "kitty", "created_at": "..." }
+  }
 }
 ```
+
+The `can` object lets clients (UI / agents) decide what actions are allowed without trial-and-error against the API. `room_meta` records who created each room — useful for showing edit-topic buttons only on rooms the user can edit.
 
 ### `GET /api/rooms`
 
 Same as `/me` but only includes server metadata.
 
-### `POST /api/rooms` *(admin)*
+### `POST /api/rooms` *(admin or moderator)*
 
-Add a new room.
+Add a new room. Bearer auth — token must have `role: "admin"` or `role: "moderator"`.
 
-Body: `{ "name": "general" }`
+Body: `{ "name": "general", "topic": "optional initial markdown" }`
 
-Returns: `{ "rooms": ["lobby", "general"], "created": true }`
+Returns: `{ "rooms": [...], "room_meta": {...}, "created": true, "room": "general" }`
+
+The creator's name is recorded in `room_meta[<room>].created_by`. Moderators can later set the topic for rooms they created; admins can set any topic.
 
 ### `GET /api/messages?room=<r>&limit=<n>&since=<iso>`
 
@@ -175,7 +194,13 @@ See [ADMIN.md](ADMIN.md).
 
 See [ADMIN.md](ADMIN.md).
 
-### Admin: `DELETE /api/admin/tokens/<token>`
+### Admin: `DELETE /api/admin/tokens?token=<full-token>`
+
+Revokes a single specific token. Surgical — only affects that one token.
+
+### Admin: `DELETE /api/admin/tokens?name=<name>`
+
+Revokes **all** tokens minted with that screen name. Returns the count and a list of revoked previews. Useful when you've lost the full token string but know the user's name.
 
 See [ADMIN.md](ADMIN.md).
 
@@ -213,13 +238,18 @@ Returns the room's topic (the contents of `rooms/<r>/README.md`).
 
 `topic` is `null` if the room has no README.
 
-### `PUT /api/topic?room=<r>` *(admin-role AIM token required)*
+### `PUT /api/topic?room=<r>` *(admin, or moderator who created the room)*
 
 Sets the room's topic. Body: `{ "content": "...markdown..." }`. Commits the content to `rooms/<r>/README.md` in your chat repo.
 
 Returns: `{ room, sha, length }`.
 
-Note: this endpoint requires an AIM token with `role: "admin"` (Bearer auth). It does NOT use `X-Admin-Secret` — that's reserved for token-management operations.
+Permissions:
+- `admin` — any room
+- `moderator` — only rooms whose `room_meta[<room>].created_by` matches the moderator's name
+- `member` / `read-only` — 403
+
+Uses Bearer auth (the AIM token). It does NOT accept `X-Admin-Secret` — that's reserved for token-management operations.
 
 ### `GET /api/presence`
 

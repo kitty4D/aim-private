@@ -40,15 +40,51 @@ export async function requireAdminRole(req: Request): Promise<AuthedUser> {
   return user;
 }
 
-export function requireAdmin(req: Request): void {
-  const secret = req.headers.get("x-admin-secret") ?? "";
+export async function requireModeratorOrAdmin(req: Request): Promise<AuthedUser> {
+  const user = await requireUser(req);
+  if (user.role !== "admin" && user.role !== "moderator") {
+    throw new AuthError(403, "This action requires an admin or moderator AIM token.");
+  }
+  return user;
+}
+
+/**
+ * Allow either:
+ *   - X-Admin-Secret header matching ADMIN_SECRET env (bootstrap / CLI), or
+ *   - Bearer auth with an admin-role AIM token (signed-in admin UI).
+ * Returns the AuthedUser when authenticated via Bearer, or null for secret-based auth.
+ */
+export async function requireAdmin(req: Request): Promise<AuthedUser | null> {
   const expected = process.env.ADMIN_SECRET ?? "";
   if (!expected) {
     throw new AuthError(500, "Server misconfigured: ADMIN_SECRET is not set.");
   }
-  if (!secret || !timingSafeEqual(secret, expected)) {
-    throw new AuthError(401, "Missing or invalid X-Admin-Secret header.");
+
+  const secret = req.headers.get("x-admin-secret") ?? "";
+  if (secret) {
+    if (!timingSafeEqual(secret, expected)) {
+      throw new AuthError(401, "Invalid X-Admin-Secret header.");
+    }
+    return null;
   }
+
+  // Fall back to Bearer auth — must be an admin-role AIM token.
+  const authHeader = req.headers.get("authorization") ?? "";
+  if (authHeader) {
+    const user = await requireUser(req);
+    if (user.role !== "admin") {
+      throw new AuthError(
+        403,
+        "This endpoint requires an admin-role AIM token (or the X-Admin-Secret header).",
+      );
+    }
+    return user;
+  }
+
+  throw new AuthError(
+    401,
+    "Missing auth. Provide either X-Admin-Secret header or Authorization: Bearer <admin-role token>.",
+  );
 }
 
 function timingSafeEqual(a: string, b: string): boolean {

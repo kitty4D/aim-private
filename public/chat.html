@@ -14,7 +14,8 @@
   <link rel="stylesheet" href="/css/aim.css" />
   <link rel="stylesheet" href="/css/chat.css" />
 </head>
-<body>
+<body class="chat-shell">
+  <h1 class="sr-only">AIM chat</h1>
   <div class="app">
     <!-- Buddy List window -->
     <div class="window buddy-list">
@@ -25,29 +26,43 @@
         <div class="title-bar-controls">
           <button aria-label="Minimize" disabled></button>
           <button aria-label="Maximize" disabled></button>
-          <button id="signoffBtn" aria-label="Close" title="Sign off"></button>
+          <button type="button" id="signoffBtn" aria-label="Sign off" title="Sign off"></button>
         </div>
       </div>
 
       <div class="motd hidden" id="motd"></div>
 
-      <div class="status-bar" style="background:#ece9d8;border-bottom:1px solid #888">
-        <span style="padding:2px 4px"><b id="meName">…</b> <span class="help">(<span id="meRole">…</span>)</span></span>
-        <span class="spacer" style="flex:1"></span>
-        <span id="statusPill" class="status-pill" title="Click to cycle">
-          <span class="dot" style="background:#2ecc40"></span>
-          <span class="label">Available</span>
-        </span>
-        <button id="muteBtn" style="margin-left:4px" title="Toggle sound">🔊</button>
+      <div class="status-bar buddy-identity-strip" role="group" aria-label="Your account and presence">
+        <div class="buddy-identity-id">
+          <span class="buddy-identity-name">
+            <span class="buddy-lcd">
+              <span class="buddy-lcd-glass">
+                <b id="meName" class="buddy-lcd-readout">…</b>
+              </span>
+            </span>
+          </span>
+          <span class="buddy-identity-role">(<span id="meRole">…</span>)</span>
+        </div>
+        <span class="spacer buddy-identity-spacer" aria-hidden="true"></span>
+        <div class="buddy-identity-controls" role="group" aria-label="Status and sound">
+          <button type="button" id="statusPill" class="status-pill" title="Cycle status: Available, Away, Invisible" aria-label="Your status is Available. Activate to change.">
+            <span class="dot" style="background:#2ecc40" aria-hidden="true"></span>
+            <span class="label">Available</span>
+          </button>
+          <button type="button" id="muteBtn" title="Toggle sound" aria-label="Sound on">🔊</button>
+          <button type="button" id="adminBtn" class="hidden" title="Admin tools" aria-label="Admin tools">⚙️</button>
+        </div>
       </div>
 
       <div class="window-body">
         <div class="buddy-section" id="onlineSection">
-          <div class="buddy-section-header" id="onlineHeader">Online Buddies</div>
+          <button type="button" class="buddy-section-header" id="onlineHeader" aria-expanded="true" aria-controls="onlineList">Online Buddies</button>
           <ul id="onlineList"></ul>
         </div>
         <div class="buddy-section" id="roomsSection">
-          <div class="buddy-section-header">Rooms</div>
+          <div class="buddy-section-toolbar" id="roomsToolbar">
+            <button type="button" class="buddy-section-header" id="roomsHeader" aria-expanded="true" aria-controls="roomList">Rooms</button>
+          </div>
           <ul id="roomList"></ul>
         </div>
       </div>
@@ -74,9 +89,6 @@
 
   <script type="module">
     import { bootChat } from "/js/ui.js";
-    document.querySelectorAll(".buddy-section-header").forEach((h) => {
-      h.addEventListener("click", () => h.parentElement.classList.toggle("collapsed"));
-    });
     bootChat();
   </script>
 </body>

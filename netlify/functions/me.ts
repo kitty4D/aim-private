@@ -12,13 +12,35 @@ export default async function handler(req: Request): Promise<Response> {
       name: user.name,
       role: user.role,
       created_at: user.created_at,
+      can: capabilitiesFor(user.role),
       server_name: config.server_name,
       motd: config.motd ?? null,
       rooms: config.rooms,
+      room_meta: config.room_meta ?? {},
       realtime: realtimeConfig(),
     });
   } catch (e) {
     return errorResponse(e);
+  }
+}
+
+function capabilitiesFor(role: string): {
+  read_messages: boolean;
+  send_messages: boolean;
+  pin_messages: boolean;
+  create_rooms: boolean;
+  set_topics: "any" | "own_rooms_only" | false;
+} {
+  switch (role) {
+    case "admin":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: true, set_topics: "any" };
+    case "moderator":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: true, set_topics: "own_rooms_only" };
+    case "member":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: false, set_topics: false };
+    case "read-only":
+    default:
+      return { read_messages: true, send_messages: false, pin_messages: false, create_rooms: false, set_topics: false };
   }
 }
 

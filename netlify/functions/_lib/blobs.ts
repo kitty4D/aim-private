@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 
-export type AimRole = "admin" | "member" | "read-only";
+export type AimRole = "admin" | "moderator" | "member" | "read-only";
 
 export interface AimToken {
   name: string;

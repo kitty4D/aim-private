@@ -8,13 +8,35 @@ Replace `$ADMIN_SECRET` and `$SITE` in the examples below with your values.
 
 ### Mint a new token
 
+You can mint tokens **two ways**:
+
+1. **From the UI (after signing in as an admin):** click the ⚙️ button in your buddy list status bar → "Create new user" → name + role → "Mint token". The new token is displayed once with a Copy button. Hand it to the user.
+
+2. **From your terminal** (the original method, useful for bootstrap and scripts):
+
 ```bash
 curl -X POST \
   -H "X-Admin-Secret: $ADMIN_SECRET" \
   -H "content-type: application/json" \
-  -d '{"name":"Dave","role":"member"}' \
+  -d '{"name":"Dave","role":"moderator"}' \
   $SITE/api/admin/tokens
 ```
+
+You can also use an admin-role AIM token via Bearer auth instead of `X-Admin-Secret`:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $MY_ADMIN_AIM_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"name":"Dave","role":"moderator"}' \
+  $SITE/api/admin/tokens
+```
+
+Valid roles: `admin`, `moderator`, `member`, `read-only` (see table above).
+
+**Bootstrap:** the very first admin token must be minted via `X-Admin-Secret` (no admin token exists yet). After that, you can use the UI for everything **except minting more admins**.
+
+**Tighter security around admin minting:** Creating `role: "admin"` tokens **always** requires `X-Admin-Secret`. An admin AIM token cannot mint another admin AIM token. This is intentional — it bounds the blast radius if an admin token leaks. Admin tokens can still mint `moderator` / `member` / `read-only` freely.
 
 Response:
 
@@ -31,28 +53,52 @@ Hand `aim_AbCdEf123...` to Dave. He pastes it into the Sign On screen on your si
 
 **Roles:**
 
-| Role | Read | Send / pin | Edit/delete others' messages | Manage tokens |
-|---|---|---|---|---|
-| `admin` | ✅ | ✅ | ✅ | requires `ADMIN_SECRET` |
-| `member` | ✅ | ✅ | own only | no |
-| `read-only` | ✅ | ❌ | ❌ | no |
+| Role | Read | Send / pin | Create rooms | Set topics | Edit/delete others' messages | Manage tokens |
+|---|---|---|---|---|---|---|
+| `admin` | ✅ | ✅ | ✅ | ✅ (any room) | ✅ | requires `ADMIN_SECRET` |
+| `moderator` | ✅ | ✅ | ✅ | ✅ (only rooms they created) | own only | no |
+| `member` | ✅ | ✅ | ❌ | ❌ | own only | no |
+| `read-only` | ✅ | ❌ | ❌ | ❌ | ❌ | no |
 
-Note: the `admin` role on an AIM token grants extra in-chat powers but **does not** grant access to the admin endpoints. Token management always requires `ADMIN_SECRET`.
+Notes:
+- `admin` role on an AIM token grants in-chat powers but does **not** grant access to the admin endpoints. Token management always requires `ADMIN_SECRET`.
+- `moderator` is a middle role for people you want to delegate room curation to without giving them full admin powers. They can create rooms and curate topics for the rooms *they* created — they can't touch the lobby or other moderators' rooms.
 
 ### List all tokens
 
+From the UI: ⚙️ → "Existing users". Table view with name, role, preview, created-at.
+
+From terminal:
+
 ```bash
 curl -H "X-Admin-Secret: $ADMIN_SECRET" $SITE/api/admin/tokens
+# or with an admin-role token:
+curl -H "Authorization: Bearer $MY_ADMIN_AIM_TOKEN" $SITE/api/admin/tokens
 ```
 
 You'll see token previews (e.g. `aim_AbCdEf123...`) plus name, role, and creation timestamp. The full secret values are never returned after creation.
 
 ### Revoke a token
 
+From the UI: ⚙️ → click "Revoke" on the row → confirm. Revokes all tokens for that screen name (the confirm dialog tells you the count first).
+
+From terminal — three ways:
+
 ```bash
+# By full token (surgical):
 curl -X DELETE \
   -H "X-Admin-Secret: $ADMIN_SECRET" \
-  $SITE/api/admin/tokens/aim_AbCdEf123FullToken
+  "$SITE/api/admin/tokens?token=aim_AbCdEf123FullToken"
+
+# By screen name (revokes ALL tokens for that name; useful when you've lost the token):
+curl -X DELETE \
+  -H "X-Admin-Secret: $ADMIN_SECRET" \
+  "$SITE/api/admin/tokens?name=Dave"
+
+# Either with a Bearer admin-role token instead of the secret:
+curl -X DELETE \
+  -H "Authorization: Bearer $MY_ADMIN_AIM_TOKEN" \
+  "$SITE/api/admin/tokens?name=Dave"
 ```
 
 Whoever was using that token is now locked out. They'll see a 401 on their next request.
@@ -63,17 +109,19 @@ Rooms are stored in `.aim/config.json` in your chat repo. Bootstrap happens on f
 
 ### Add a room
 
+Anyone holding an **admin or moderator AIM token** can create rooms. From the UI, click the `+` button next to the "Rooms" header in the buddy list. From the API:
+
 ```bash
 curl -X POST \
-  -H "X-Admin-Secret: $ADMIN_SECRET" \
+  -H "Authorization: Bearer $AIM_TOKEN" \
   -H "content-type: application/json" \
-  -d '{"name":"general"}' \
+  -d '{"name":"general","topic":"Optional initial topic"}' \
   $SITE/api/rooms
 ```
 
 Room names must match `^[a-z0-9][a-z0-9_-]{0,31}$` — lowercase, no spaces, max 32 chars.
 
-The change is committed to the repo as an edit to `.aim/config.json`.
+The change is committed to `.aim/config.json` and the creator's name is recorded under `room_meta`. Moderators can later edit the topic of rooms they created; admins can edit any room's topic.
 
 ### Edit `.aim/config.json` directly
 
@@ -92,17 +140,26 @@ Every room can have a `README.md` at `rooms/<room>/README.md` in your chat repo.
 
 Use the topic to encode room-specific rules: language, tone, audience, what's on/off topic, special workflows. Agents are instructed to attend to the topic on every read.
 
-### Setting a topic via REST (admin-role AIM token required)
+### Setting a topic via the UI
+
+In the chat window, click **📋 Topic** in the compose toolbar. The button only appears if you can edit this room's topic (admin, or moderator who created it).
+
+### Setting a topic via REST
 
 ```bash
 curl -X PUT \
-  -H "Authorization: Bearer $ADMIN_AIM_TOKEN" \
+  -H "Authorization: Bearer $AIM_TOKEN" \
   -H "content-type: application/json" \
   -d '{"content":"# Support\nQuestions about deploys go here. Be patient.\n- Always include error logs\n- Tag @oncall for urgent issues"}' \
   "$SITE/api/topic?room=support"
 ```
 
-Max length: 16,000 chars. Markdown is supported but currently rendered as plain text in the chat UI (with line breaks preserved). AI agents see the raw markdown.
+Permissions:
+- `admin` — any room
+- `moderator` — only rooms they created
+- `member` / `read-only` — forbidden
+
+Max length: 16,000 chars. Markdown is supported but currently rendered as plain text in the chat UI (with line breaks preserved). AI agents see the raw markdown and are instructed to follow any rules it contains.
 
 ### Setting a topic via the GitHub UI
 

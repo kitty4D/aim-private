@@ -43,6 +43,13 @@ export const Client = {
   rooms() {
     return this.req("/api/rooms");
   },
+  createRoom(name, topic) {
+    const body = topic ? { name, topic } : { name };
+    return this.req("/api/rooms", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
   readRoom(room, { since, limit = 50 } = {}) {
     const params = new URLSearchParams({ room, limit: String(limit) });
     if (since) params.set("since", since);
@@ -106,6 +113,28 @@ export const Client = {
     return this.req("/api/topic?room=" + encodeURIComponent(room), {
       method: "PUT",
       body: JSON.stringify({ content }),
+    });
+  },
+
+  // Admin operations — requires an admin-role token (or X-Admin-Secret, but
+  // the UI uses Bearer auth via the signed-in user's token).
+  adminListTokens() {
+    return this.req("/api/admin/tokens");
+  },
+  adminCreateToken(name, role) {
+    return this.req("/api/admin/tokens", {
+      method: "POST",
+      body: JSON.stringify({ name, role }),
+    });
+  },
+  adminRevokeToken(token) {
+    return this.req("/api/admin/tokens?token=" + encodeURIComponent(token), {
+      method: "DELETE",
+    });
+  },
+  adminRevokeByName(name) {
+    return this.req("/api/admin/tokens?name=" + encodeURIComponent(name), {
+      method: "DELETE",
     });
   },
 };

@@ -1,6 +1,6 @@
-import { requireUser, requireAdminRole, json, errorResponse } from "./_lib/auth.js";
+import { requireUser, AuthError, json, errorResponse } from "./_lib/auth.js";
 import { normalizeRoom } from "./_lib/paths.js";
-import { readConfig } from "./_lib/config.js";
+import { readConfig, canManageRoom } from "./_lib/config.js";
 import { getRoomTopicService, setRoomTopicService } from "./_lib/services.js";
 
 const MAX_TOPIC_LEN = 16_000;
@@ -19,10 +19,18 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     if (req.method === "PUT") {
-      const user = await requireAdminRole(req);
+      const user = await requireUser(req);
       const cfg = await readConfig();
       if (!cfg.rooms.includes(safe)) {
         return json({ error: `Unknown room: '${safe}'.` }, 404);
+      }
+      if (!canManageRoom(cfg, safe, user)) {
+        throw new AuthError(
+          403,
+          user.role === "moderator"
+            ? "Moderators can only set topics for rooms they created. Ask an admin to update this room's topic."
+            : "This action requires admin or moderator (room creator) permissions.",
+        );
       }
       const body = (await req.json().catch(() => ({}))) as { content?: string };
       if (typeof body.content !== "string") {

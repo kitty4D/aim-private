@@ -7,7 +7,12 @@ import {
   unpinMessageService,
   listPinsService,
   searchService,
+  addRoomService,
+  setRoomTopicService,
+  getRoomTopicService,
 } from "./_lib/services.js";
+import { readConfig, canManageRoom } from "./_lib/config.js";
+import { normalizeRoom } from "./_lib/paths.js";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -117,8 +122,53 @@ const TOOLS = [
   },
   {
     name: "aim_whoami",
-    description: "Return the AIM identity associated with the current token (your name and role).",
+    description:
+      "Return the AIM identity associated with the current token (your name, role, and what role-gated actions you can take).",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "aim_create_room",
+    description:
+      "Create a new chat room. Requires an admin or moderator role. Optionally sets an initial topic (the room's README) in the same call. Returns the created room name. Use sparingly — rooms persist in git history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Lowercase alphanumeric / dashes / underscores, max 32 chars (e.g. 'support', 'random-chat').",
+        },
+        topic: {
+          type: "string",
+          description: "Optional initial topic content (markdown). Sets the room's README at creation time.",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "aim_get_topic",
+    description: "Get the current topic (README) for a room. Returns the raw markdown.",
+    inputSchema: {
+      type: "object",
+      properties: { room: { type: "string" } },
+      required: ["room"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "aim_set_topic",
+    description:
+      "Set or update a room's topic (the README that all readers see). Admins can set any room's topic; moderators can only set topics for rooms they created. Members and read-only tokens cannot. Will fail with 403 if you don't have permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        room: { type: "string" },
+        content: { type: "string", description: "Markdown content. Max 16,000 chars." },
+      },
+      required: ["room", "content"],
+      additionalProperties: false,
+    },
   },
 ];
 
@@ -258,10 +308,81 @@ async function callTool(
       const results = await searchService({ query, room: args.room as string | undefined });
       return JSON.stringify(results, null, 2);
     }
-    case "aim_whoami":
-      return JSON.stringify({ name: user.name, role: user.role, created_at: user.created_at }, null, 2);
+    case "aim_whoami": {
+      const can = capabilitiesFor(user.role);
+      return JSON.stringify(
+        { name: user.name, role: user.role, created_at: user.created_at, can },
+        null,
+        2,
+      );
+    }
+    case "aim_create_room": {
+      if (user.role !== "admin" && user.role !== "moderator") {
+        throw new Error(
+          "Creating rooms requires admin or moderator role. Your role is: " + user.role,
+        );
+      }
+      const room = str(args.name, "name");
+      const topic = typeof args.topic === "string" ? args.topic : null;
+      const after = await addRoomService(room, user as any);
+      if (topic && topic.trim()) {
+        await setRoomTopicService(normalizeRoom(room), topic, user as any);
+      }
+      return JSON.stringify(
+        {
+          created: !after.rooms.includes(normalizeRoom(room)) ? false : true,
+          room: normalizeRoom(room),
+          rooms: after.rooms,
+          topic_set: Boolean(topic && topic.trim()),
+        },
+        null,
+        2,
+      );
+    }
+    case "aim_get_topic": {
+      const room = normalizeRoom(str(args.room, "room"));
+      const topic = await getRoomTopicService(room);
+      return JSON.stringify({ room, topic }, null, 2);
+    }
+    case "aim_set_topic": {
+      const room = normalizeRoom(str(args.room, "room"));
+      const content = str(args.content, "content");
+      const cfg = await readConfig();
+      if (!cfg.rooms.includes(room)) {
+        throw new Error(`Unknown room: '${room}'.`);
+      }
+      if (!canManageRoom(cfg, room, user)) {
+        throw new Error(
+          user.role === "moderator"
+            ? `You can only set topics for rooms you created. '${room}' was not created by you.`
+            : `Setting topics requires admin or moderator (room creator) permissions. Your role is: ${user.role}.`,
+        );
+      }
+      const result = await setRoomTopicService(room, content, user as any);
+      return JSON.stringify({ room, sha: result.commitSha, length: content.length }, null, 2);
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
+  }
+}
+
+function capabilitiesFor(role: string): {
+  read_messages: boolean;
+  send_messages: boolean;
+  pin_messages: boolean;
+  create_rooms: boolean;
+  set_topics: "any" | "own_rooms_only" | false;
+} {
+  switch (role) {
+    case "admin":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: true, set_topics: "any" };
+    case "moderator":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: true, set_topics: "own_rooms_only" };
+    case "member":
+      return { read_messages: true, send_messages: true, pin_messages: true, create_rooms: false, set_topics: false };
+    case "read-only":
+    default:
+      return { read_messages: true, send_messages: false, pin_messages: false, create_rooms: false, set_topics: false };
   }
 }
 
