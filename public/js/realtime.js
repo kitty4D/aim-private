@@ -57,6 +57,11 @@ class PulseBackend {
     }
   }
 
+  /** Force-fire a tick now (e.g. from a manual refresh button). */
+  refresh() {
+    return this._tick();
+  }
+
   async _fallback() {
     for (const room of Object.keys(this.listeners)) {
       this.listeners[room]({ room, sha: this.lastSha[room], reason: "fallback" });
@@ -109,6 +114,12 @@ class SseBackend {
     this.source?.close();
     this.fallback?.stop();
   }
+
+  /** SSE has no manual tick; delegate to the pulse fallback if available. */
+  refresh() {
+    if (this.fallback) return this.fallback.refresh();
+    return Promise.resolve();
+  }
 }
 
 export const Realtime = {
@@ -140,5 +151,13 @@ export const Realtime = {
     if (this.backend) this.backend.stop();
     this.listeners = {};
     this.globalListeners = [];
+  },
+
+  /** Force-fire a fresh pulse poll right now (used by the UI refresh button). */
+  refresh() {
+    if (this.backend && typeof this.backend.refresh === "function") {
+      return this.backend.refresh();
+    }
+    return Promise.resolve();
   },
 };

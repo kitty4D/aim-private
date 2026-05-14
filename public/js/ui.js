@@ -107,8 +107,39 @@ async function startRealtime() {
   Realtime.subscribeGlobal((pulse) => {
     state.online = pulse.online || [];
     renderOnlineList();
+    syncRoomListFromPulse(pulse);
   });
   await Realtime.init(state.me.realtime);
+}
+
+/**
+ * Keep the buddy list's Rooms section in sync with the server. Pulse now
+ * returns `available_rooms` (canonical list from .aim/config.json) and
+ * `room_meta`. If they've changed since boot — e.g. another moderator
+ * created a room — re-render the buddy list and start watching the new
+ * rooms via Realtime.
+ */
+function syncRoomListFromPulse(pulse) {
+  const next = pulse?.available_rooms;
+  if (!Array.isArray(next)) return;
+  const same =
+    next.length === state.rooms.length &&
+    next.every((r, i) => r === state.rooms[i]);
+  if (same) {
+    // Even if the list didn't change, room_meta might have (e.g. ownership).
+    if (pulse.room_meta) state.roomMeta = pulse.room_meta;
+    return;
+  }
+  // Subscribe to any newly-added rooms so we get their pulse-driven updates.
+  const known = new Set(state.rooms);
+  for (const room of next) {
+    if (!known.has(room)) {
+      Realtime.subscribe(room, () => refreshRoom(room));
+    }
+  }
+  state.rooms = next;
+  state.roomMeta = pulse.room_meta || state.roomMeta;
+  renderBuddyList();
 }
 
 function renderBuddyList() {
@@ -626,9 +657,14 @@ async function refreshRoom(room, { initial = false } = {}) {
     const newMessages = res.messages || [];
     if (newMessages.length > 0) {
       const existingShas = new Set(st.messages.map((m) => m.sha + ":" + m.path));
+      let added = 0;
       for (const m of newMessages) {
         const k = m.sha + ":" + m.path;
-        if (!existingShas.has(k)) st.messages.push(m);
+        if (!existingShas.has(k)) {
+          existingShas.add(k);
+          st.messages.push(m);
+          added++;
+        }
       }
       st.messages.sort((a, b) => a.sent_at.localeCompare(b.sent_at));
       const last = st.messages[st.messages.length - 1];
@@ -637,7 +673,9 @@ async function refreshRoom(room, { initial = false } = {}) {
         lastDate.setSeconds(lastDate.getSeconds() + 1);
         st.lastSinceIso = lastDate.toISOString();
       }
-      if (!initial && room === state.activeRoom) Sounds.message();
+      // Only ping when we actually learned about a new message — incremental
+      // fetches can repeat the same commits (e.g. since vs commit timestamps).
+      if (!initial && room === state.activeRoom && added > 0) Sounds.message();
       if (room === state.activeRoom) renderTranscript();
     }
   } catch (e) {
@@ -724,6 +762,26 @@ function setupToolbar() {
     syncMuteButtonUi();
   });
   syncMuteButtonUi();
+
+  const refreshBtn = $("#refreshBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      // brief visual feedback so the user sees the click registered
+      refreshBtn.classList.add("spinning");
+      try {
+        // Force-fire a pulse tick: refreshes online users + rooms list.
+        await Realtime.refresh();
+        // Also re-fetch the active room's messages so the user gets the
+        // freshest transcript without waiting for the next pulse-detected
+        // SHA change.
+        if (state.activeRoom) await refreshRoom(state.activeRoom);
+      } finally {
+        refreshBtn.classList.remove("spinning");
+        refreshBtn.disabled = false;
+      }
+    });
+  }
 
   $("#statusPill").addEventListener("click", () => {
     const cycle = ["available", "away", "invisible"];
